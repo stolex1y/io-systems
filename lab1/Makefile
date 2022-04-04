@@ -6,14 +6,17 @@ SRC = $(BASE)/src
 BUILD_MAKEFILE = $(BUILD)/Makefile
 MOD_NAME = char_driver
 
+default: build
+
 $(BUILD):
 	mkdir -p "$@"
 	
 $(BUILD_MAKEFILE): $(BUILD)
 	touch "$@"	
 	
-load: $(BUILD)/$(MOD_NAME).ko
+load: build
 	sudo insmod $(BUILD)/$(MOD_NAME).ko
+	sudo chmod 777 /dev/chdev
 	lsmod
 
 unload:
@@ -21,7 +24,7 @@ unload:
 	
 reload: unload clean load
 
-$(BUILD)/$(MOD_NAME).ko: $(BUILD_MAKEFILE)
+build: $(BUILD_MAKEFILE)
 	make -C $(KDIR) M=$(BUILD) src=$(SRC) modules
 	
 clean:
