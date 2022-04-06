@@ -1,5 +1,6 @@
 #include <linux/string.h>
 #include <linux/kernel.h>
+#include <linux/types.h> 
  
 #include "partition.h"
  
@@ -25,20 +26,23 @@
 #define SEC_TO_HEADS(SEC) ((SEC) / SEC_PER_HEAD + 1)
 #define SEC_TO_CYL(SEC) (SEC_TO_HEADS(SEC) / HEADS_PER_CYL + 1)
 
+#define PART_TYPE_PRIM 0x83
+#define PART_TYPE_EXT 0x05
+
 typedef struct
 {
-    unsigned char boot_type; // 0x00 - Inactive; 0x80 - Active (Bootable)
-    unsigned char start_head;
-    unsigned char start_sec:6;
-    unsigned char start_cyl_hi:2;
-    unsigned char start_cyl;
-    unsigned char part_type;
-    unsigned char end_head;
-    unsigned char end_sec:6;
-    unsigned char end_cyl_hi:2;
-    unsigned char end_cyl;
-    unsigned long abs_start_sec;
-    unsigned long sec_in_part;
+    u8 boot_type; // 0x00 - Inactive; 0x80 - Active (Bootable)
+    u8 start_head;
+    u8 start_sec:6;
+    u8 start_cyl_hi:2;
+    u8 start_cyl;
+    u8 part_type;
+    u8 end_head;
+    u8 end_sec:6;
+    u8 end_cyl_hi:2;
+    u8 end_cyl;
+    u32 abs_start_sec;
+    u32 sec_in_part;
 } PartEntry;
  
 typedef PartEntry PartTable[4];
@@ -51,11 +55,11 @@ static PartTable def_part_table =
         start_sec: 0x02,
         start_cyl: 0x00,
 		start_cyl_hi: 0x00,
-        part_type: 0x83,
-        end_head: SEC_TO_HEADS(PART1_SIZE_SEC) % HEADS_PER_CYL - 1, // part1 = 60 * 1024
-        end_sec: PART1_SIZE_SEC % SEC_PER_HEAD, // 15
+        part_type: PART_TYPE_PRIM,
+        end_head: SEC_TO_HEADS(PART1_SIZE_SEC) % HEADS_PER_CYL - 1, 
+        end_sec: PART1_SIZE_SEC % SEC_PER_HEAD, 
 		end_cyl_hi: 0x00,
-		end_cyl: SEC_TO_CYL(PART1_SIZE_SEC) - 1, // 2
+		end_cyl: SEC_TO_CYL(PART1_SIZE_SEC) - 1,
         abs_start_sec: 0x01,
         sec_in_part: PART1_SIZE_SEC - 1
     },
@@ -64,26 +68,18 @@ static PartTable def_part_table =
         start_head: 0x00,
         start_sec: 0x01,
 		start_cyl_hi: 0x00,
-        start_cyl: SEC_TO_CYL(PART1_SIZE_SEC), // 3
-        part_type: 0x05, // extended partition
+        start_cyl: SEC_TO_CYL(PART1_SIZE_SEC),
+        part_type: PART_TYPE_EXT,
         end_head: SEC_TO_HEADS(PART2_EX_SIZE_SEC) % HEADS_PER_CYL - 1,
         end_sec: PART2_EX_SIZE_SEC % SEC_PER_HEAD,
 		end_cyl_hi: 0x00,
-        end_cyl: SEC_TO_CYL(PART2_EX_SIZE_SEC) - 1,
+        end_cyl: SEC_TO_CYL(PART2_EX_SIZE_SEC) + SEC_TO_CYL(PART1_SIZE_SEC) - 1,
         abs_start_sec: PART1_SIZE_SEC,
         sec_in_part: PART2_EX_SIZE_SEC
-    },
-    {},
-    {}
+    }
 };
 
-static const unsigned int def_log_part_br_cyl[] = 
-{
-	SEC_TO_CYL(PART1_SIZE_SEC), 
-	SEC_TO_CYL(PART1_SIZE_SEC) + SEC_TO_CYL(PART2_EX_1_SIZE_SEC)
-};
-
-static const PartTable def_log_part_table[] =
+static PartTable def_log_part_table[] =
 {
     {
         {
@@ -91,13 +87,13 @@ static const PartTable def_log_part_table[] =
             start_head: 0x00,
             start_sec: 0x02,
 			start_cyl_hi: 0x00,
-            start_cyl: def_log_part_br_cyl[0],
-            part_type: 0x83,
+            start_cyl: SEC_TO_CYL(PART1_SIZE_SEC),
+            part_type: PART_TYPE_PRIM,
             end_head: SEC_TO_HEADS(PART2_EX_1_SIZE_SEC) % HEADS_PER_CYL - 1,
             end_sec: PART2_EX_1_SIZE_SEC % SEC_PER_HEAD,
 			end_cyl_hi: 0x00,
-            end_cyl: def_log_part_br_cyl[1] - 1,
-            abs_start_sec: 0x01,
+            end_cyl: SEC_TO_CYL(PART1_SIZE_SEC) + SEC_TO_CYL(PART2_EX_1_SIZE_SEC) - 1,
+            abs_start_sec: 1,
             sec_in_part: PART2_EX_1_SIZE_SEC - 1
         },
         {
@@ -105,15 +101,15 @@ static const PartTable def_log_part_table[] =
             start_head: 0x00,
             start_sec: 0x01,
 			start_cyl_hi: 0x00,
-            start_cyl: def_log_part_br_cyl[1],
-            part_type: 0x05,
+            start_cyl: SEC_TO_CYL(PART1_SIZE_SEC) + SEC_TO_CYL(PART2_EX_1_SIZE_SEC),
+            part_type: PART_TYPE_EXT,
             end_head: SEC_TO_HEADS(PART2_EX_2_SIZE_SEC) % HEADS_PER_CYL - 1,
             end_sec: PART2_EX_2_SIZE_SEC % SEC_PER_HEAD,
 			end_cyl_hi: 0x00,
-            end_cyl: def_log_part_br_cyl[1] + SEC_TO_CYL(PART2_EX_2_SIZE_SEC) - 1,
+            end_cyl: SEC_TO_CYL(PART1_SIZE_SEC) + SEC_TO_CYL(PART2_EX_1_SIZE_SEC) + SEC_TO_CYL(PART2_EX_2_SIZE_SEC) - 1,
             abs_start_sec: PART2_EX_1_SIZE_SEC,
             sec_in_part: PART2_EX_2_SIZE_SEC
-        },
+        }
     },
     {
         {
@@ -121,27 +117,33 @@ static const PartTable def_log_part_table[] =
             start_head: 0x00,
             start_sec: 0x02,
 			start_cyl_hi: 0x00,
-            start_cyl: def_log_part_br_cyl[1],
-            part_type: 0x83,
+            start_cyl: SEC_TO_CYL(PART1_SIZE_SEC) + SEC_TO_CYL(PART2_EX_1_SIZE_SEC),
+            part_type: PART_TYPE_PRIM,
             end_head: SEC_TO_HEADS(PART2_EX_2_SIZE_SEC) % HEADS_PER_CYL - 1,
             end_sec: PART2_EX_2_SIZE_SEC % SEC_PER_HEAD,
 			end_cyl_hi: 0x00,
-            end_cyl: def_log_part_br_cyl[1] + SEC_TO_CYL(PART2_EX_2_SIZE_SEC) - 1,
+            end_cyl: SEC_TO_CYL(PART1_SIZE_SEC) + SEC_TO_CYL(PART2_EX_1_SIZE_SEC) + SEC_TO_CYL(PART2_EX_2_SIZE_SEC) - 1,
             abs_start_sec: 0x01,
             sec_in_part: PART2_EX_2_SIZE_SEC - 1
-        },
+        }
     }
 };
- 
+
+static const unsigned int def_log_part_br_abs_sec[] = 
+{
+	PART1_SIZE_SEC, 
+	PART1_SIZE_SEC + PART2_EX_1_SIZE_SEC
+};
+
 static void copy_mbr(u8 *disk) {
     memset(disk, 0x0, MBR_SIZE);
-    *(unsigned long *)(disk + MBR_DISK_SIGNATURE_OFFSET) = 0x36E5756D;
+    *(u32 *)(disk + MBR_DISK_SIGNATURE_OFFSET) = 0x36E5756D;
     memcpy(disk + PARTITION_TABLE_OFFSET, &def_part_table, PARTITION_TABLE_SIZE);
     *(unsigned short *)(disk + MBR_SIGNATURE_OFFSET) = MBR_SIGNATURE;
 }
 
-static void copy_br(u8 *disk, int start_cylinder, const PartTable *part_table) {
-    disk += (start_cylinder * SEC_PER_CYL * RAM_DEV_SECTOR_SIZE);
+static void copy_br(u8 *disk, int start_sec, const PartTable *part_table) {
+    disk += (start_sec* RAM_DEV_SECTOR_SIZE);
     memset(disk, 0x0, BR_SIZE);
     memcpy(disk + PARTITION_TABLE_OFFSET, part_table,
         PARTITION_TABLE_SIZE);
@@ -149,11 +151,9 @@ static void copy_br(u8 *disk, int start_cylinder, const PartTable *part_table) {
 }
 
 void copy_mbr_n_br(u8 *disk) {
-    int i;
-	pr_info("%d\n", def_part_table[0].end_sec);
- 
+    int i; 
     copy_mbr(disk);
     for (i = 0; i < ARRAY_SIZE(def_log_part_table); i++) {
-        copy_br(disk, def_log_part_br_cyl[i], &def_log_part_table[i]);
+        copy_br(disk, def_log_part_br_abs_sec[i], def_log_part_table + i);
     }
 }

@@ -13,7 +13,7 @@
 #include "partition.h"
  
 #define DEV_FIRST_MINOR 0
-#define DEV_MINOR_CNT 8
+#define DEV_MINOR_CNT 16
 #define DEV_NAME "ramdev"
 
 #define MY_MODULE DEV_NAME " driver: "
@@ -45,73 +45,7 @@ static void dev_transfer(struct ram_device *dev, unsigned long start_sector,
 		ram_device_read(dev, start_sector, buffer, sector_cnt);
 
 } 
-
-
  
-/*static int dev_request(struct ram_device *dev, unsigned long start_sector, 
-							unsigned long sector_cnt, char *buffer, int write) { 
-    //int dir = rq_data_dir(req);
-    //sector_t start_sector = blk_rq_pos(req);
-    //unsigned int sector_cnt = blk_rq_sectors(req);
- 
-    struct bio_vec *bv;
-    struct req_iterator iter;
- 
-    sector_t sector_offset;
-    unsigned int sectors;
-    u8 *buffer;
- 
-    int ret = 0;
- 
-    //printk(KERN_DEBUG MY_MODULE "Dir:%d; Sec:%lld; Cnt:%d\n", dir, start_sector, sector_cnt);
- 
-    sector_offset = 0;
-    rq_for_each_segment(bv, req, iter)
-    {
-        buffer = page_address(bv->bv_page) + bv->bv_offset;
-        if (bv->bv_len % dev_SECTOR_SIZE != 0)
-        {
-            pr_err(MY_MODULE "Should never happen: "
-                "bio size (%d) is not a multiple of dev_SECTOR_SIZE (%d).\n"
-                "This may lead to data truncation.\n",
-                bv->bv_len, dev_SECTOR_SIZE);
-            ret = -EIO;
-        }
-        sectors = bv->bv_len / dev_SECTOR_SIZE;
-        printk(KERN_DEBUG MY_MODULE "Sector Offset: %lld; Buffer: %p; Length: %d sectors\n",
-            sector_offset, buffer, sectors);
-        if (dir == WRITE) // Write to the device
-        {
-            ramdevice_write(start_sector + sector_offset, buffer, sectors);
-        }
-        else // Read from the device
-        {
-            ramdevice_read(start_sector + sector_offset, buffer, sectors);
-        }
-        sector_offset += sectors;
-    }
-    if (sector_offset != sector_cnt)
-    {
-        pr_err(MY_MODULE "bio info doesn't match with the request info");
-        ret = -EIO;
-    }
- 
-    return ret;
-}*/
- 
-/*
- * Represents a block I/O request for us to execute
- */
-/*static void dev_request(struct request_queue *q) {
-    struct request *req;
- 
-    // Gets the current request from the dispatch queue 
-    while ((req = blk_fetch_request(q)) != NULL) {
-		struct ram_device *dev = req->rq_disk->private_data;
-        dev_transfer(dev, req->sector, req->nr_sectors, req->buffer, rq_data_dir(req));
-    }
-}
-*/ 
 static blk_status_t dev_request(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue_data* bd)   /* For blk-mq */
 {
 	struct request *req = bd->rq;
@@ -179,7 +113,7 @@ static int __init dev_init(void)
     }
  
     /* Get a request queue (here queue is created) */
-    spin_lock_init(&dev->lock);
+    //spin_lock_init(&dev->lock);
 	//dev->queue = blk_init_queue(dev_request, &dev->lock);
 	dev->queue = blk_mq_init_sq_queue(&dev->tag_set, &mq_ops, 128, BLK_MQ_F_SHOULD_MERGE);
     if (dev->queue == NULL) {
