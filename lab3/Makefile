@@ -7,9 +7,9 @@ BUILD_MAKEFILE = $(BUILD)/Makefile
 MOD_NAME = vni
 
 dest_port = 12345
-link = lo
-debug = 0
-vni_addr = 127.0.0.15
+link = eth0
+debug = 1
+vni_addr = 192.168.1.10
 
 default: build
 

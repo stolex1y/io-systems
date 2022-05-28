@@ -72,19 +72,22 @@ static void write_proc_msg(char *saddr, int sport, char *daddr, int dport) {
 
 
 static char check_frame(struct sk_buff *skb) {
-	struct iphdr *ip;
+	struct iphdr *ip = (struct iphdr *)skb_network_header(skb);
 	char *daddr, *saddr;
 	struct udphdr *udp = NULL;
 	int source_port, dest_port;
 	
-	if(skb->protocol != htons(ETH_P_IP))
-		return 0;
+	//DBG("protocol %d\n", ntohs(skb->protocol));
+	
+	//if(skb->protocol != htons(ETH_P_IP))
+		//return 0;
 	
     ip = (struct iphdr *) skb_network_header(skb);
 	daddr = strIP(ip->daddr);
 	saddr = strIP(ip->saddr);
-    DBG("rx: from %s to %s \n", saddr, daddr);
-
+	
+	DBG("check ip-packet from %s to %s by protocol %d\n", saddr, daddr, ip->protocol);
+    
 	if (IPPROTO_UDP == ip->protocol) {
 		udp = udp_hdr(skb);
         source_port = ntohs(udp->source);
@@ -99,10 +102,13 @@ static char check_frame(struct sk_buff *skb) {
     return 0;
 }
 
-static rx_handler_result_t handle_frame(struct sk_buff **pskb) {    	   
+static rx_handler_result_t handle_frame(struct sk_buff **pskb) {    
+	DBG("handle frame\n");
 	if (!check_frame(*pskb)) {
+		DBG("not suitable\n");
 		return RX_HANDLER_PASS;
 	}
+	DBG("suitable, update rx stats: old = %ld, new = %ld\n", stats.rx_packets, stats.rx_packets + 1);
 	stats.rx_packets++;
 	stats.rx_bytes += (*pskb)->len;
 	(*pskb)->dev = child;
@@ -123,18 +129,20 @@ static int stop(struct net_device *dev) {
 
 static netdev_tx_t start_xmit(struct sk_buff *skb, struct net_device *dev) {
     struct priv *priv = netdev_priv(dev);
-
-    if (check_frame(skb)) {
-        stats.tx_packets++;
-        stats.tx_bytes += skb->len;
-    }
-
-    if (priv->parent) {
+	
+	DBG("start xmit from %s\n", dev->name);
+    if (check_frame(skb) && priv->parent) {
+		DBG("suitable, update tx stats: old = %ld, new = %ld\n", stats.tx_packets, stats.tx_packets + 1);
+		stats.tx_packets++;
+		stats.tx_bytes += skb->len;
+		
         skb->dev = priv->parent;
         skb->priority = 1;
         dev_queue_xmit(skb);
 		DBG("redirect from %s to %s\n", dev->name, skb->dev->name);
-    }
+    } else {
+		DBG("not suitable");
+	}
     return NETDEV_TX_OK;
 }
 
@@ -208,6 +216,7 @@ int __init vni_init(void) {
 	
     child = alloc_netdev(sizeof(struct priv), ifname, NET_NAME_UNKNOWN, setup);
     if (child == NULL) {
+		proc_remove(proc_file);
         pr_err(MY_MODULE "%s allocate error\n", THIS_MODULE->name);
         return -ENOMEM;
     }
@@ -215,11 +224,13 @@ int __init vni_init(void) {
     priv->parent = __dev_get_by_name(&init_net, link); //parent interface
     if (!priv->parent) {
         pr_err(MY_MODULE "%s no such net: %s\n", THIS_MODULE->name, link);
+		proc_remove(proc_file);
         free_netdev(child);
         return -ENODEV;
     }
     if (priv->parent->type != ARPHRD_ETHER && priv->parent->type != ARPHRD_LOOPBACK) {
         pr_err(MY_MODULE "%s illegal net type\n", THIS_MODULE->name); 
+		proc_remove(proc_file);
         free_netdev(child);
         return -EINVAL;
     }
@@ -230,6 +241,7 @@ int __init vni_init(void) {
 	err = dev_alloc_name(child, child->name);
     if (err) {
         pr_err(MY_MODULE "%s allocate name, error %i\n", THIS_MODULE->name, err);
+		proc_remove(proc_file);
         free_netdev(child);
         return -EIO;
     }
